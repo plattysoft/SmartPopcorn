@@ -91,6 +91,26 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (mRelayGpio != null) {
+            try {
+                mRelayGpio.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            finally {
+                mRelayGpio = null;
+            }
+        }
+        if (mPresenceGpio != null) {
+            try {
+                mPresenceGpio.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            finally {
+                mPresenceGpio = null;
+            }
+        }
     }
 
 }
