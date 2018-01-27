@@ -12,39 +12,21 @@ import java.io.IOException;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements CommandListener {
     private static final String TAG = MainActivity.class.getSimpleName();
     private static final String PRESENCE_GPIO = "BCM16";
     private static final String RELAY_GPIO = "BCM12";
-    private static final long LIGHT_TIMEOUT = 5000;
+    private static final long LIGHT_TIMEOUT = 3*3600000; // 3 Minutes as a temporary concept
 
-    private Gpio mPresenceGpio;
     private Gpio mRelayGpio;
     private Timer mTimer;
+    private ApiServer mApiServer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         PeripheralManagerService pms = new PeripheralManagerService();
-        // Open the presence sensor
-        try {
-            mPresenceGpio = pms.openGpio(PRESENCE_GPIO);
-            mPresenceGpio.setDirection(Gpio.DIRECTION_IN);
-            mPresenceGpio.setEdgeTriggerType(Gpio.EDGE_BOTH);
-            mPresenceGpio.registerGpioCallback(new GpioCallback() {
-                @Override
-                public boolean onGpioEdge(Gpio gpio) {
-                    try {
-                        onPresenceStateChanged(gpio.getValue());
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    return true;
-                }
-            });
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+
         // Open the Relay
         try {
             mRelayGpio = pms.openGpio(RELAY_GPIO);
@@ -52,31 +34,7 @@ public class MainActivity extends Activity {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    private void onPresenceStateChanged(boolean value) {
-        Log.e("onPresenceStateChanged", " presence: "+value);
-        // Turn the ligh on for TIME
-        if (value) {
-            try {
-                mRelayGpio.setValue(true);
-                // start a timer to turn it off
-                if (mTimer != null) {
-                    mTimer.cancel();
-                    mTimer.purge();
-                }
-                mTimer = new Timer();
-                mTimer.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        onTimePassed();
-                    }
-                }, LIGHT_TIMEOUT);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
+        mApiServer = new ApiServer(this);
     }
 
     private void onTimePassed() {
@@ -101,16 +59,43 @@ public class MainActivity extends Activity {
                 mRelayGpio = null;
             }
         }
-        if (mPresenceGpio != null) {
-            try {
-                mPresenceGpio.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            finally {
-                mPresenceGpio = null;
-            }
+        mApiServer.stop();
+    }
+
+    @Override
+    public void onCommandReceived(PopcornCommand enumCommand) {
+        switch (enumCommand) {
+            case START:
+                try {
+                    // If the relay is off
+                    if (! mRelayGpio.getValue()) {
+                        cancelTimer();
+                        mTimer = new Timer();
+                        mTimer.schedule(new TimerTask() {
+                            @Override
+                            public void run() {
+                                onTimePassed();
+                            }
+                        }, LIGHT_TIMEOUT);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                break;
+            case CANCEL:
+                cancelTimer();
+                try {
+                    mRelayGpio.setValue(false);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
         }
     }
 
+    private void cancelTimer() {
+        if (mTimer != null) {
+            mTimer.cancel();
+            mTimer.purge();
+        }
+    }
 }
